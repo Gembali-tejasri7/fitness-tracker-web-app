@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fitness Tracker</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: linear-gradient(to right, #8fc1c0, #c399ce);
+            margin: 0;
+            padding: 20px;
+            color: #333;
+        }
+        h1,
+        h2 {
+            text-align: center;
+        }
+        .history {
+            background: white;
+            padding: 15px;
+            margin: 20px auto;
+            max-width: 800px;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+        .charts {
+            background: white;
+            padding: 15px;
+            margin: 20px auto;
+            max-width: 800px;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+        .suggestion {
+            background: white;
+            padding: 15px;
+            margin: 20px auto;
+            max-width: 800px;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+        canvas {
+            max-width: 100%;
+            margin-top: 20px;
+        }
+        #pieChart {
+            width: 300px !important;
+            height: 300px !important;
+            max-width: 300px !important;
+            max-height: 300px !important;
+            display: block;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        #barChart {
+            width: 300px !important;
+            height: 300px !important;
+            max-width: 300px !important;
+            max-height: 300px !important;
+            display: block;
+            margin-left: auto;
+            margin-right: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="mt-4">Fitness Tracker</h1>
+        <form id="workoutForm" class="mt-4">
+            <h2 class="mb-3">Log Workout</h2>
+            <div class="form-group">
+                <label for="date">Date:</label>
+                <input type="date" id="date" class="form-control" required>
+            </div>
+            <div class="form-group">
+                <label for="exercise">Exercise:</label>
+                <select id="exercise" class="form-control" required>
+                    <option value="" disabled selected>Select Exercise</option>
+                    <option value="Running">Running</option>
+                    <option value="Cycling">Cycling</option>
+                    <option value="Swimming">Swimming</option>
+                    <option value="Weight Lifting">Weight Lifting</option>
+                    <option value="Yoga">Yoga</option>
+                    <option value="Jump Rope">Jump Rope</option>
+                    <option value="HIIT">HIIT</option>
+                    <option value="Dancing">Dancing</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="duration">Duration (minutes):</label>
+                <input type="number" id="duration" class="form-control" required min="1">
+            </div>
+            <button type="submit" class="btn btn-primary">Add Workout</button>
+        </form>
+        <div class="history mt-5">
+            <h2>Workout History</h2>
+            <table id="historyTable" class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Exercise</th>
+                        <th>Duration</th>
+                        <th>Calories</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+        <div class="charts mt-5">
+            <h2>Progress Charts</h2>
+            <div class="row">
+                <div class="col-md-6">
+                    <canvas id="barChart" width="400" height="400"></canvas>
+                </div>
+                <div class="col-md-6">
+                    <canvas id="pieChart" width="400" height="400"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="suggestion mt-5">
+            <h2>Suggestions Based on Goal</h2>
+            <div class="form-group">
+                <label for="goal">Select your fitness goal:</label>
+                <select id="goal" class="form-control">
+                    <option value="" disabled selected>Choose a goal</option>
+                    <option value="lose">Lose Weight</option>
+                    <option value="muscle">Build Muscle</option>
+                    <option value="endurance">Improve Endurance</option>
+                    <option value="flexibility">Increase Flexibility</option>
+                    <option value="maintain">Maintain Fitness</option>
+                </select>
+            </div>
+            <div id="suggestionOutput" style="margin-top:15px; font-size: 1.1em;"></div>
+        </div>
+    </div>
+    <script>
+        const form = document.getElementById('workoutForm');
+        const historyTableBody = document.querySelector('#historyTable tbody');
+        const suggestionOutput = document.getElementById('suggestionOutput');
+        const goalSelector = document.getElementById('goal');
+        const barChartCanvas = document.getElementById('barChart').getContext('2d');
+        const pieChartCanvas = document.getElementById('pieChart').getContext('2d');
+        let workouts = [];
+        let editingIndex = -1;
+        let barChart, pieChart;
+        const CALORIE_RATES = {
+            "Running": 10,
+            "Cycling": 8,
+            "Swimming": 9,
+            "Weight Lifting": 6,
+            "Yoga": 3,
+            "Jump Rope": 12,
+            "HIIT": 11,
+            "Dancing": 7
+        };
+        function calculateCalories(exercise, duration) {
+            return duration * (CALORIE_RATES[exercise] || 5); 
+        }
+        function clearForm() {
+            form.reset();
+            editingIndex = -1;
+        }
+        function renderWorkoutTable() {
+            historyTableBody.innerHTML = ''; 
+            workouts.forEach((workout, index) => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${workout.date}</td>
+                    <td>${workout.exercise}</td>
+                    <td>${workout.duration} min</td>
+                    <td>${workout.calories}</td>
+                    <td>
+                        <button class="btn btn-sm btn-info edit-btn" onclick="editWorkout(${index})">Edit</button>
+                        <button class="btn btn-sm btn-danger delete-btn" onclick="deleteWorkout(${index})">Delete</button>
+                    </td>
+                `;
+                historyTableBody.appendChild(row);
+            });
+        }
+        function handleFormSubmit(event) {
+            event.preventDefault();
+            const workoutDate = document.getElementById('date').value;
+            const exerciseType = document.getElementById('exercise').value;
+            const workoutDuration = parseInt(document.getElementById('duration').value);
+            const caloriesBurned = calculateCalories(exerciseType, workoutDuration);
+            const workout = {
+                date: workoutDate,
+                exercise: exerciseType,
+                duration: workoutDuration,
+                calories: caloriesBurned
+            };
+            if (editingIndex > -1) {
+                workouts[editingIndex] = workout; // Update existing workout
+            } else {
+                workouts.push(workout); // Add new workout
+            }
+            clearForm();
+            renderWorkoutTable();
+            renderCharts();
+            renderSuggestions();
+        }
+        function editWorkout(index) {
+            const workout = workouts[index];
+            document.getElementById('date').value = workout.date;
+            document.getElementById('exercise').value = workout.exercise;
+            document.getElementById('duration').value = workout.duration;
+            editingIndex = index;
+        }
+        function deleteWorkout(index) {
+            workouts.splice(index, 1);
+            renderWorkoutTable();
+            renderCharts();
+            renderSuggestions();
+        }
+        function renderCharts() {
+            const dateCalories = {};
+            const exerciseCalories = {};
+            workouts.forEach(workout => {
+                dateCalories[workout.date] = (dateCalories[workout.date] || 0) + workout.calories;
+                exerciseCalories[workout.exercise] = (exerciseCalories[workout.exercise] || 0) + workout.calories;
+            });
+            if (barChart) barChart.destroy();
+            if (pieChart) pieChart.destroy();
+            barChart = new Chart(barChartCanvas, {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(dateCalories),
+                    datasets: [{
+                        label: 'Calories Burned per Day',
+                        data: Object.values(dateCalories),
+                        backgroundColor: '#28a745'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+            pieChart = new Chart(pieChartCanvas, {
+                type: 'pie',
+                data: {
+                    labels: Object.keys(exerciseCalories),
+                    datasets: [{
+                        label: 'Calories by Exercise',
+                        data: Object.values(exerciseCalories),
+                        backgroundColor: [
+                            '#ff6384', '#36a2eb', '#ffce56', '#66bb6a',
+                            '#ab47bc', '#ffa726', '#26c6da', '#ef5350'
+                        ]
+                    }]
+                }
+            });
+        }
+        function renderSuggestions() {
+            const selectedGoal = goalSelector.value;
+            const totalCalories = workouts.reduce((sum, workout) => sum + workout.calories, 0);
+            const totalDuration = workouts.reduce((sum, workout) => sum + workout.duration, 0);
+            const averageCaloriesPerMinute = totalDuration ? (totalCalories / totalDuration) : 0;
+            let suggestionText = `<p>Total calories burned: <strong>${totalCalories}</strong></p>`;
+            if (!selectedGoal) {
+                suggestionText += `<p>Please select a goal above to get personalized suggestions.</p>`;
+            } else {
+                switch (selectedGoal) {
+                    case 'lose':
+                        const estimatedMinutesToLose = averageCaloriesPerMinute ?
+                            Math.ceil(7700 / averageCaloriesPerMinute) : 'N/A';
+                        suggestionText += `
+                            <p>Goal: <strong>Lose Weight</strong></p>
+                            <ul>
+                                <li>Do cardio exercises: Running, Jump Rope, HIIT</li>
+                                <li>Eat lean proteins, avoid sugar & refined carbs</li>
+                                <li>Target: Burn ~7700 calories to lose 1kg</li>
+                                <li>Estimated time: <strong>${estimatedMinutesToLose}</strong> minutes of training</li>
+                            </ul>`;
+                        break;
+                    case 'muscle':
+                        suggestionText += `
+                            <p>Goal: <strong>Build Muscle</strong></p>
+                            <ul>
+                                <li>Focus on Weight Lifting + HIIT</li>
+                                <li>Eat high protein foods (eggs, chicken, lentils)</li>
+                                <li>Progressively increase weights and reps</li>
+                            </ul>`;
+                        break;
+                    case 'endurance':
+                        suggestionText += `
+                            <p>Goal: <strong>Improve Endurance</strong></p>
+                            <ul>
+                                <li>Increase duration of cardio: Cycling, Swimming, Running</li>
+                                <li>Eat complex carbs and hydrate well</li>
+                                <li>Maintain steady pace and avoid overtraining</li>
+                            </ul>`;
+                        break;
+                    case 'flexibility':
+                        suggestionText += `
+                            <p>Goal: <strong>Increase Flexibility</strong></p>
+                            <ul>
+                                <li>Practice Yoga, Pilates, or Stretching routines regularly</li>
+                                <li>Include warm-ups and cool-downs in your workout</li>
+                                <li>Stay consistent for gradual improvement</li>
+                            </ul>`;
+                        break;
+                    case 'maintain':
+                        suggestionText += `
+                            <p>Goal: <strong>Maintain Fitness</strong></p>
+                            <ul>
+                                <li>Mix cardio and strength training</li>
+                                <li>Eat balanced meals with adequate protein and carbs</li>
+                                <li>Keep a steady workout routine to sustain results</li>
+                            </ul>`;
+                        break;
+                    default:
+                        suggestionText += `<p>Select a goal for suggestions.</p>`;
+                }
+            }
+            suggestionOutput.innerHTML = suggestionText;
+        }
+        form.addEventListener('submit', handleFormSubmit);
+        goalSelector.addEventListener('change', renderSuggestions);
+        renderWorkoutTable();
+        renderCharts();
+        renderSuggestions();
+    </script>
+    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.5.4/dist/umd/popper.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+</body>
+</html>
